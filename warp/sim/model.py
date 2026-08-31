@@ -3888,9 +3888,21 @@ class ModelBuilder:
         start_vertex = len(self.particle_q)
         start_tri = len(self.tri_indices)
         # particles
-        for v in vertices:
-            p = wp.quat_rotate(rot, wp.vec3(v * scale)) + pos
-            self.add_particle(p, vel, radius)
+        _rot_arr = np.asarray([rot[0], rot[1], rot[2], rot[3]], dtype=np.float64)
+        _pos_arr = np.asarray(pos, dtype=np.float64)
+        if (float(scale) == 1.0 and not _pos_arr.any()
+                and np.array_equal(_rot_arr, np.array([0.0, 0.0, 0.0, 1.0]))):
+            _pts = np.asarray(vertices, dtype=np.float32)
+            _n_new = len(_pts)
+            self.particle_q.extend([wp.vec3(_p) for _p in _pts])
+            self.particle_qd.extend([vel] * _n_new)
+            self.particle_mass.extend([radius] * _n_new)
+            self.particle_radius.extend([self.default_particle_radius] * _n_new)
+            self.particle_flags.extend([PARTICLE_FLAG_ACTIVE] * _n_new)
+        else:
+            for v in vertices:
+                p = wp.quat_rotate(rot, wp.vec3(v * scale)) + pos
+                self.add_particle(p, vel, radius)
         # triangles
         inds = np.array(indices).reshape(-1, 3)
         # find all stitching triangles
