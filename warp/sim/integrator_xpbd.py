@@ -2413,6 +2413,17 @@ class XPBDIntegrator:
             if model.attachment_constraint:
                 model.vert_attach_constraint_lambdas.zero_()
 
+            # Self-contact solve striding. The contact PAIRS come from
+            # wp.sim.collide() once per frame, but the XPBD solve for them ran
+            # on every substep -- 20x a frame at sim_substeps 20. Solving them
+            # every Nth substep leaves springs, bending and body contacts
+            # solving every substep, so fabric stiffness is untouched.
+            # model.self_contact_interval defaults to 1 = original behaviour.
+            _sc_interval = int(getattr(model, 'self_contact_interval', 1) or 1)
+            _sc_step = getattr(self, '_sc_step', 0)
+            self._sc_step = _sc_step + 1
+            _sc_solve = (_sc_step % _sc_interval) == 0
+
             for i in range(self.iterations):
                 if model.body_count:
                     if requires_grad:
@@ -2524,7 +2535,7 @@ class XPBDIntegrator:
 
                     # particle and mesh self-collisions
                     if model.particle_max_radius > 0.0:
-                        if model.enable_particle_particle_collisions:
+                        if model.enable_particle_particle_collisions and _sc_solve:
                             wp.launch(
                                 kernel=solve_particle_particle_contacts,
                                 dim=model.particle_count,
@@ -2544,7 +2555,7 @@ class XPBDIntegrator:
                                 outputs=[deltas],
                                 device=model.device,
                             )
-                        if model.enable_triangle_particle_collisions:
+                        if model.enable_triangle_particle_collisions and _sc_solve:
                             wp.launch(
                                 kernel=solve_particle_triangle_self_contacts,
                                 dim=model.point_tri_contact_max,
@@ -2564,7 +2575,7 @@ class XPBDIntegrator:
 
                     # distance constraints and edge collision constraints
                     if model.spring_count:
-                        if model.enable_edge_edge_collisions: 
+                        if model.enable_edge_edge_collisions and _sc_solve:
                             wp.launch(
                                 kernel=solve_edge_edge_self_contact,
                                 dim=model.edge_contact_max,
